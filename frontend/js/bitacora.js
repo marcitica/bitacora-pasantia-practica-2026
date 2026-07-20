@@ -2,8 +2,14 @@
    CONFIGURACIÓN
 ===================================================== */
 
-const API_BITACORAS = "/api/bitacoras";
-const API_ESTUDIANTES = "/api/estudiantes";
+const API_URL =
+  "https://bitacora-pasantia-practica-2026-1.onrender.com";
+
+const API_BITACORAS =
+  `${API_URL}/api/bitacoras`;
+
+const API_ESTUDIANTES =
+  `${API_URL}/api/estudiantes`;
 
 const token = localStorage.getItem("token");
 
