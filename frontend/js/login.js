@@ -1,6 +1,4 @@
 const API_URL = "https://bitacora-pasantia-practica-2026-1.onrender.com";
-
-
 const formularioLogin =
   document.getElementById("formLogin");
 
