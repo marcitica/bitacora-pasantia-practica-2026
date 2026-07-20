@@ -1,4 +1,23 @@
+# Dependencias (se instalan con "npm install", no deben subirse)
 node_modules/
+
+# Variables de entorno con datos sensibles (contraseñas, claves)
 .env
-.vscode/
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Sistema operativo / editores
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Salidas de build (si en el futuro se agrega alguna)
+dist/
+build/

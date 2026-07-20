@@ -1,4 +1,3 @@
-const API_URL = "https://bitacora-pasantia-practica-2026-1.onrender.com";
 const formularioLogin =
   document.getElementById("formLogin");
 
@@ -37,7 +36,7 @@ formularioLogin.addEventListener(
 
     try {
       const respuesta = await fetch(
-        `${API_URL}/api/auth/login`,
+        "/api/auth/login",
         {
           method: "POST",
           headers: {
@@ -101,7 +100,7 @@ formularioLogin.addEventListener(
         "administrador"
       ) {
         window.location.href =
-          "/administrador.html";
+          "/dashboard.html";
 
         return;
       }

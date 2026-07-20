@@ -1,61 +1,601 @@
-/* =====================================================
-   CONFIGURACIÓN
-===================================================== */
+protegerPagina("estudiante");
 
-const API_URL =
-  "https://bitacora-pasantia-practica-2026-1.onrender.com";
-
-const API_BITACORAS =
-  `${API_URL}/api/bitacoras`;
-
-const API_ESTUDIANTES =
-  `${API_URL}/api/estudiantes`;
-
-const token = localStorage.getItem("token");
-
-const usuarioGuardado = JSON.parse(
-  localStorage.getItem("usuario") || "{}"
-);
-
-/* =====================================================
-   ELEMENTOS DEL DOM
-===================================================== */
-
-const formularioBitacora =
+const formBitacora =
   document.getElementById("formBitacora");
 
-const registroId =
-  document.getElementById("registroId");
+let registrosActuales = [];
 
-const fecha =
-  document.getElementById("fecha");
+async function cargarRegistros() {
+  try {
+    registrosActuales = await solicitud(
+      "/bitacoras/mis-registros"
+    );
 
-const horaEntrada =
-  document.getElementById("horaEntrada");
+    const tabla =
+      document.getElementById("tablaBitacoras");
 
-const horaSalida =
-  document.getElementById("horaSalida");
+    tabla.innerHTML = "";
 
-const tarea =
-  document.getElementById("tarea");
+    let totalAcumulado = 0;
 
-const mensajeBitacora =
-  document.getElementById("mensajeBitacora");
+    registrosActuales.forEach(registro => {
+      totalAcumulado += registro.totalHoras;
 
-const tablaBitacoras =
-  document.getElementById("tablaBitacoras");
+      const fila = document.createElement("tr");
 
-const totalHoras =
-  document.getElementById("totalHoras");
+      fila.innerHTML = `
+        <td>
+          ${new Date(
+            registro.fecha
+          ).toLocaleDateString("es-CR")}
+        </td>
 
-const btnGuardarActividad =
-  document.getElementById("btnGuardarActividad");
+        <td>${registro.tarea}</td>
 
-const btnCancelarEdicion =
-  document.getElementById("btnCancelarEdicion");
+        <td>${registro.horaEntrada}</td>
 
-const btnCerrarSesion =
-  document.getElementById("btnCerrarSesion");
+        <td>${registro.horaSalida}</td>
+
+        <td>${registro.totalHoras}</td>
+
+        <td>${registro.estado}</td>
+
+        <td>
+          ${registro.observacionesDocente || ""}
+        </td>
+
+        <td>
+          ${
+            registro.estado === "Pendiente"
+              ? `
+                <button
+                  onclick="editarRegistro('${registro._id}')"
+                >
+                  Editar
+                </button>
+
+                <button
+                  class="boton-peligro"
+                  onclick="eliminarRegistro('${registro._id}')"
+                >
+                  Eliminar
+                </button>
+              `
+              : "Sin acciones"
+          }
+        </td>
+      `;
+
+      tabla.appendChild(fila);
+    });
+
+    document.getElementById(
+      "totalHoras"
+    ).textContent = totalAcumulado.toFixed(2);
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+formBitacora.addEventListener(
+  "submit",
+  async event => {
+    event.preventDefault();
+
+    const id =
+      document.getElementById("registroId").value;
+
+    const datos = {
+      fecha:
+        document.getElementById("fecha").value,
+
+      tarea:
+        document.getElementById("tarea").value,
+
+      horaEntrada:
+        document.getElementById(
+          "horaEntrada"
+        ).value,
+
+      horaSalida:
+        document.getElementById(
+          "horaSalida"
+        ).value,
+
+      firmaSupervisor:
+        document.getElementById(
+          "firmaSupervisor"
+        ).value
+    };
+
+    try {
+      if (id) {
+        await solicitud(
+          `/bitacoras/${id}`,
+          {
+            method: "PUT",
+
+            body: JSON.stringify(datos)
+          }
+        );
+
+        alert("Registro actualizado.");
+      } else {
+        await solicitud(
+          "/bitacoras",
+          {
+            method: "POST",
+
+            body: JSON.stringify(datos)
+          }
+        );
+
+        alert("Actividad guardada.");
+      }
+
+      limpiarFormulario();
+
+      cargarRegistros();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+);
+
+function editarRegistro(id) {
+  const registro = registrosActuales.find(
+    item => item._id === id
+  );
+
+  if (!registro) {
+    return;
+  }
+
+  document.getElementById(
+    "registroId"
+  ).value = registro._id;
+
+  document.getElementById(
+    "fecha"
+  ).value = registro.fecha.substring(0, 10);
+
+  document.getElementById(
+    "tarea"
+  ).value = registro.tarea;
+
+  document.getElementById(
+    "horaEntrada"
+  ).value = registro.horaEntrada;
+
+  document.getElementById(
+    "horaSalida"
+  ).value = registro.horaSalida;
+
+  document.getElementById(
+    "firmaSupervisor"
+  ).value = registro.firmaSupervisor || "";
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+}
+
+async function eliminarRegistro(id) {
+  const confirmado = confirm(
+    "¿Desea eliminar este registro?"
+  );
+
+  if (!confirmado) {
+    return;
+  }
+
+  try {
+    await solicitud(
+      `/bitacoras/${id}`,
+      {
+        method: "DELETE"
+      }
+    );
+
+    cargarRegistros();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+function limpiarFormulario() {
+  formBitacora.reset();
+
+  document.getElementById(
+    "registroId"
+  ).value = "";
+}
+
+const btnImprimirSemana =
+  document.getElementById("btnImprimirSemana");
+
+const semanaImprimir =
+  document.getElementById("semanaImprimir");
+
+const reporteSemana =
+  document.getElementById("reporteSemana");
+
+btnImprimirSemana.addEventListener(
+  "click",
+  imprimirBitacoraSemanal
+);
+
+/**
+ * Devuelve la fecha del lunes correspondiente
+ * al año y número de semana seleccionados.
+ */
+function obtenerInicioSemana(valorSemana) {
+  const [anioTexto, semanaTexto] =
+    valorSemana.split("-W");
+
+  const anio = Number(anioTexto);
+  const numeroSemana = Number(semanaTexto);
+
+  const fechaReferencia =
+    new Date(anio, 0, 4);
+
+  const diaSemana =
+    fechaReferencia.getDay() || 7;
+
+  fechaReferencia.setDate(
+    fechaReferencia.getDate() -
+    diaSemana +
+    1
+  );
+
+  fechaReferencia.setDate(
+    fechaReferencia.getDate() +
+    (numeroSemana - 1) * 7
+  );
+
+  fechaReferencia.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  return fechaReferencia;
+}
+
+/**
+ * Formatea una fecha en español.
+ */
+function formatearFechaImpresion(fecha) {
+  return new Date(fecha).toLocaleDateString(
+    "es-CR",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric"
+    }
+  );
+}
+
+/**
+ * Calcula las horas trabajadas.
+ */
+function calcularHorasSemana(
+  horaEntrada,
+  horaSalida
+) {
+  if (!horaEntrada || !horaSalida) {
+    return 0;
+  }
+
+  const [horaInicio, minutoInicio] =
+    horaEntrada.split(":").map(Number);
+
+  const [horaFin, minutoFin] =
+    horaSalida.split(":").map(Number);
+
+  const minutosEntrada =
+    horaInicio * 60 + minutoInicio;
+
+  const minutosSalida =
+    horaFin * 60 + minutoFin;
+
+  const diferencia =
+    minutosSalida - minutosEntrada;
+
+  if (diferencia <= 0) {
+    return 0;
+  }
+
+  return diferencia / 60;
+}
+
+/**
+ * Obtiene los registros guardados desde la API.
+ */
+async function obtenerRegistrosParaImprimir() {
+  const token =
+    localStorage.getItem("token");
+
+  const respuesta = await fetch(
+    "/api/bitacoras/mis-registros",
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+
+  const datos = await respuesta.json();
+
+  if (!respuesta.ok) {
+    throw new Error(
+      datos.mensaje ||
+      "No fue posible obtener los registros."
+    );
+  }
+
+  /*
+   * Permite trabajar si la API devuelve:
+   * - un arreglo directamente
+   * - { bitacoras: [] }
+   * - { registros: [] }
+   */
+  return (
+    datos.bitacoras ||
+    datos.registros ||
+    datos
+  );
+}
+
+/**
+ * Imprime solamente los registros de la semana
+ * seleccionada.
+ */
+async function imprimirBitacoraSemanal() {
+  try {
+    const valorSemana =
+      semanaImprimir.value;
+
+    if (!valorSemana) {
+      alert(
+        "Debe seleccionar una semana."
+      );
+
+      return;
+    }
+
+    const fechaInicio =
+      obtenerInicioSemana(valorSemana);
+
+    const fechaFin =
+      new Date(fechaInicio);
+
+    fechaFin.setDate(
+      fechaFin.getDate() + 6
+    );
+
+    fechaFin.setHours(
+      23,
+      59,
+      59,
+      999
+    );
+
+    const registros =
+      await obtenerRegistrosParaImprimir();
+
+    const registrosSemana =
+      registros.filter((registro) => {
+        const fechaRegistro =
+          new Date(registro.fecha);
+
+        return (
+          fechaRegistro >= fechaInicio &&
+          fechaRegistro <= fechaFin
+        );
+      });
+
+    if (registrosSemana.length === 0) {
+      alert(
+        "No existen registros para la semana seleccionada."
+      );
+
+      return;
+    }
+
+    const usuario = JSON.parse(
+      localStorage.getItem("usuario") ||
+      "{}"
+    );
+
+    let totalHorasSemana = 0;
+
+    const filas =
+      registrosSemana.map((registro) => {
+        const horas =
+          registro.totalHoras ??
+          calcularHorasSemana(
+            registro.horaEntrada,
+            registro.horaSalida
+          );
+
+        totalHorasSemana +=
+          Number(horas) || 0;
+
+        return `
+          <tr>
+            <td>
+              ${formatearFechaImpresion(
+                registro.fecha
+              )}
+            </td>
+
+            <td>
+              ${
+                registro.tarea ||
+                registro.actividad ||
+                ""
+              }
+            </td>
+
+            <td>
+              ${registro.horaEntrada || ""}
+            </td>
+
+            <td>
+              ${registro.horaSalida || ""}
+            </td>
+
+            <td>
+              ${
+                Number(horas).toFixed(2)
+              }
+            </td>
+
+            <td>
+              ${registro.estado || "Pendiente"}
+            </td>
+
+            <td>
+              ${
+                registro.observaciones ||
+                ""
+              }
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+    reporteSemana.innerHTML = `
+      <div class="encabezado-reporte">
+        <h1>
+          Colegio Técnico Profesional Cañas
+        </h1>
+
+        <h2>
+          Bitácora semanal de pasantía 2026
+        </h2>
+
+        <div class="datos-reporte">
+          <p>
+            <strong>Estudiante:</strong>
+            ${
+              usuario.nombreCompleto ||
+              usuario.nombre ||
+              ""
+            }
+          </p>
+
+          <p>
+            <strong>Correo:</strong>
+            ${usuario.correo || ""}
+          </p>
+
+          <p>
+            <strong>Semana:</strong>
+            ${formatearFechaImpresion(
+              fechaInicio
+            )}
+            al
+            ${formatearFechaImpresion(
+              fechaFin
+            )}
+          </p>
+        </div>
+      </div>
+
+      <table class="tabla-reporte">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Actividad realizada</th>
+            <th>Entrada</th>
+            <th>Salida</th>
+            <th>Horas</th>
+            <th>Estado</th>
+            <th>Observaciones</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          ${filas}
+        </tbody>
+
+        <tfoot>
+          <tr>
+            <td colspan="4">
+              <strong>
+                Total de horas de la semana
+              </strong>
+            </td>
+
+            <td colspan="3">
+              <strong>
+                ${totalHorasSemana.toFixed(2)}
+              </strong>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="seccion-firmas">
+
+        <div class="firma">
+          <div class="linea-firma"></div>
+
+          <p>
+            Firma del estudiante
+          </p>
+        </div>
+
+        <div class="firma">
+          <div class="linea-firma"></div>
+
+          <p>
+            Firma del supervisor
+          </p>
+        </div>
+
+      </div>
+
+      <div class="observaciones-supervisor">
+
+        <h3>
+          Observaciones del supervisor
+        </h3>
+
+        <div class="lineas-observaciones">
+          ________________________________________________
+          <br><br>
+          ________________________________________________
+          <br><br>
+          ________________________________________________
+        </div>
+
+      </div>
+    `;
+
+    document.body.classList.add(
+      "modo-impresion"
+    );
+
+    window.print();
+
+    document.body.classList.remove(
+      "modo-impresion"
+    );
+  } catch (error) {
+    console.error(
+      "Error al imprimir la semana:",
+      error
+    );
+
+    alert(error.message);
+  }
+}
 
 const btnImprimirSemana =
   document.getElementById("btnImprimirSemana");
@@ -66,643 +606,48 @@ const semanaImprimir =
 const reporteImpresion =
   document.getElementById("reporteImpresion");
 
-const cuerpoTablaImpresion =
-  document.getElementById("cuerpoTablaImpresion");
-
-/* =====================================================
-   VARIABLES
-===================================================== */
-
-let registrosBitacora = [];
-let datosEstudiante = {};
-
-/* =====================================================
-   VERIFICAR SESIÓN
-===================================================== */
-
-function verificarSesion() {
-  if (!token) {
-    window.location.href = "/login.html";
-    return false;
-  }
-
-  if (
-    usuarioGuardado.rol &&
-    usuarioGuardado.rol !== "estudiante"
-  ) {
-    window.location.href = "/dashboard.html";
-    return false;
-  }
-
-  return true;
-}
-
-/* =====================================================
-   FUNCIÓN PARA SOLICITUDES A LA API
-===================================================== */
-
-async function solicitarAPI(
-  url,
-  opciones = {}
-) {
-  const configuracion = {
-    ...opciones,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(opciones.headers || {})
-    }
-  };
-
-  const respuesta = await fetch(
-    url,
-    configuracion
-  );
-
-  const texto = await respuesta.text();
-
-  let datos = {};
-
-  if (texto) {
-    try {
-      datos = JSON.parse(texto);
-    } catch (error) {
-      throw new Error(
-        `El servidor devolvió una respuesta inválida: ${texto}`
-      );
-    }
-  }
-
-  if (!respuesta.ok) {
-    throw new Error(
-      datos.mensaje ||
-      datos.message ||
-      "Ocurrió un error al comunicarse con el servidor."
-    );
-  }
-
-  return datos;
-}
-
-/* =====================================================
-   CARGAR DATOS DEL ESTUDIANTE
-===================================================== */
-
-async function cargarDatosEstudiante() {
-  try {
-    /*
-     * Esta ruta debe devolver el estudiante autenticado.
-     *
-     * Si tu ruta real tiene otro nombre, cambia solamente:
-     * /api/estudiantes/mi-perfil
-     */
-    const respuesta = await solicitarAPI(
-      `${API_ESTUDIANTES}/mi-perfil`
-    );
-
-    datosEstudiante =
-      respuesta.estudiante ||
-      respuesta.usuario ||
-      respuesta;
-
-    mostrarDatosEstudiante();
-  } catch (error) {
-    console.warn(
-      "No se pudo cargar el perfil completo:",
-      error.message
-    );
-
-    datosEstudiante = {
-      ...usuarioGuardado
-    };
-
-    mostrarDatosEstudiante();
-  }
-}
-
-/* =====================================================
-   MOSTRAR DATOS DEL ESTUDIANTE
-===================================================== */
-
-function mostrarDatosEstudiante() {
-  const nombre =
-    datosEstudiante.nombreCompleto ||
-    usuarioGuardado.nombreCompleto ||
-    usuarioGuardado.nombre ||
-    "";
-
-  const especialidad =
-    datosEstudiante.especialidadId?.nombre ||
-    datosEstudiante.especialidad?.nombre ||
-    datosEstudiante.especialidad ||
-    "Desarrollo Web";
-
-  const empresa =
-    datosEstudiante.empresaId?.nombreEmpresa ||
-    datosEstudiante.empresa?.nombreEmpresa ||
-    datosEstudiante.empresa ||
-    "";
-
-  const supervisor =
-    datosEstudiante.supervisorId?.nombreCompleto ||
-    datosEstudiante.supervisor?.nombreCompleto ||
-    datosEstudiante.supervisor ||
-    "";
-
-  document.getElementById(
-    "nombreEstudiante"
-  ).textContent = nombre;
-
-  document.getElementById(
-    "especialidadEstudiante"
-  ).textContent = especialidad;
-
-  document.getElementById(
-    "empresaEstudiante"
-  ).textContent = empresa;
-
-  document.getElementById(
-    "supervisorEstudiante"
-  ).textContent = supervisor;
-}
-
-/* =====================================================
-   CARGAR REGISTROS
-===================================================== */
-
-async function cargarRegistros() {
-  try {
-    mensajeBitacora.textContent = "";
-
-    /*
-     * Si tu backend usa otra ruta, cambia solamente
-     * esta dirección.
-     */
-    const respuesta = await solicitarAPI(
-      `${API_BITACORAS}/mis-registros`
-    );
-
-    registrosBitacora =
-      respuesta.bitacoras ||
-      respuesta.registros ||
-      respuesta;
-
-    if (!Array.isArray(registrosBitacora)) {
-      registrosBitacora = [];
-    }
-
-    ordenarRegistros();
-    mostrarRegistros();
-  } catch (error) {
-    console.error(
-      "Error al cargar registros:",
-      error
-    );
-
-    mensajeBitacora.textContent =
-      error.message;
-  }
-}
-
-/* =====================================================
-   ORDENAR REGISTROS
-===================================================== */
-
-function ordenarRegistros() {
-  registrosBitacora.sort(
-    (a, b) =>
-      new Date(b.fecha) -
-      new Date(a.fecha)
-  );
-}
-
-/* =====================================================
-   MOSTRAR REGISTROS EN LA TABLA
-===================================================== */
-
-function mostrarRegistros() {
-  tablaBitacoras.innerHTML = "";
-
-  let sumaHoras = 0;
-
-  if (registrosBitacora.length === 0) {
-    tablaBitacoras.innerHTML = `
-      <tr>
-        <td colspan="8" class="sin-registros">
-          No existen actividades registradas.
-        </td>
-      </tr>
-    `;
-
-    totalHoras.textContent = "0.00";
-    return;
-  }
-
-  registrosBitacora.forEach(
-    (registro) => {
-      const horas = obtenerHorasRegistro(
-        registro
-      );
-
-      sumaHoras += horas;
-
-      const estado =
-        registro.estado || "Pendiente";
-
-      const puedeEditar =
-        estado.toLowerCase() ===
-        "pendiente";
-
-      const fila =
-        document.createElement("tr");
-
-      fila.innerHTML = `
-        <td>
-          ${formatearFecha(registro.fecha)}
-        </td>
-
-        <td>
-          ${
-            escaparHTML(
-              registro.tarea ||
-              registro.actividad ||
-              ""
-            )
-          }
-        </td>
-
-        <td>
-          ${registro.horaEntrada || ""}
-        </td>
-
-        <td>
-          ${registro.horaSalida || ""}
-        </td>
-
-        <td>
-          ${horas.toFixed(2)}
-        </td>
-
-        <td>
-          <span class="estado estado-${estado.toLowerCase()}">
-            ${estado}
-          </span>
-        </td>
-
-        <td>
-          ${
-            escaparHTML(
-              registro.observaciones ||
-              ""
-            )
-          }
-        </td>
-
-        <td class="acciones-tabla">
-
-          ${
-            puedeEditar
-              ? `
-                <button
-                  type="button"
-                  class="boton-pequeno"
-                  onclick="editarRegistro('${registro._id}')"
-                >
-                  Editar
-                </button>
-
-                <button
-                  type="button"
-                  class="boton-pequeno boton-peligro"
-                  onclick="eliminarRegistro('${registro._id}')"
-                >
-                  Eliminar
-                </button>
-              `
-              : `
-                <span class="texto-bloqueado">
-                  Revisado
-                </span>
-              `
-          }
-
-        </td>
-      `;
-
-      tablaBitacoras.appendChild(fila);
-    }
-  );
-
-  totalHoras.textContent =
-    sumaHoras.toFixed(2);
-}
-
-/* =====================================================
-   GUARDAR O ACTUALIZAR REGISTRO
-===================================================== */
-
-formularioBitacora.addEventListener(
-  "submit",
-  async (event) => {
-    event.preventDefault();
-
-    mensajeBitacora.textContent = "";
-
-    if (
-      !fecha.value ||
-      !horaEntrada.value ||
-      !horaSalida.value ||
-      !tarea.value.trim()
-    ) {
-      mensajeBitacora.textContent =
-        "Debe completar todos los campos obligatorios.";
-
-      return;
-    }
-
-    const horasCalculadas =
-      calcularHoras(
-        horaEntrada.value,
-        horaSalida.value
-      );
-
-    if (horasCalculadas <= 0) {
-      mensajeBitacora.textContent =
-        "La hora de salida debe ser posterior a la hora de entrada.";
-
-      return;
-    }
-
-    const datos = {
-      fecha: fecha.value,
-      horaEntrada: horaEntrada.value,
-      horaSalida: horaSalida.value,
-      tarea: tarea.value.trim(),
-      totalHoras: horasCalculadas
-    };
-
-    const id = registroId.value;
-
-    btnGuardarActividad.disabled = true;
-
-    btnGuardarActividad.textContent =
-      id
-        ? "Actualizando..."
-        : "Guardando...";
-
-    try {
-      if (id) {
-        await solicitarAPI(
-          `${API_BITACORAS}/${id}`,
-          {
-            method: "PUT",
-            body: JSON.stringify(datos)
-          }
-        );
-
-        mensajeBitacora.textContent =
-          "Actividad actualizada correctamente.";
-
-        mensajeBitacora.className =
-          "mensaje-exito campo-completo";
-      } else {
-        await solicitarAPI(
-          API_BITACORAS,
-          {
-            method: "POST",
-            body: JSON.stringify(datos)
-          }
-        );
-
-        mensajeBitacora.textContent =
-          "Actividad registrada correctamente.";
-
-        mensajeBitacora.className =
-          "mensaje-exito campo-completo";
-      }
-
-      limpiarFormulario();
-      await cargarRegistros();
-    } catch (error) {
-      console.error(
-        "Error al guardar actividad:",
-        error
-      );
-
-      mensajeBitacora.textContent =
-        error.message;
-
-      mensajeBitacora.className =
-        "mensaje-error campo-completo";
-    } finally {
-      btnGuardarActividad.disabled = false;
-
-      btnGuardarActividad.textContent =
-        "Guardar actividad";
-    }
-  }
-);
-
-/* =====================================================
-   EDITAR REGISTRO
-===================================================== */
-
-function editarRegistro(id) {
-  const registro =
-    registrosBitacora.find(
-      (item) => item._id === id
-    );
-
-  if (!registro) {
-    alert(
-      "No se encontró el registro seleccionado."
-    );
-    return;
-  }
-
-  if (
-    registro.estado &&
-    registro.estado.toLowerCase() !==
-      "pendiente"
-  ) {
-    alert(
-      "Solo puede editar registros pendientes."
-    );
-    return;
-  }
-
-  registroId.value = registro._id;
-
-  fecha.value =
-    obtenerFechaParaInput(registro.fecha);
-
-  horaEntrada.value =
-    registro.horaEntrada || "";
-
-  horaSalida.value =
-    registro.horaSalida || "";
-
-  tarea.value =
-    registro.tarea ||
-    registro.actividad ||
-    "";
-
-  btnGuardarActividad.textContent =
-    "Actualizar actividad";
-
-  window.scrollTo({
-    top: 0,
-    behavior: "smooth"
-  });
-}
-
-/* =====================================================
-   ELIMINAR REGISTRO
-===================================================== */
-
-async function eliminarRegistro(id) {
-  const registro =
-    registrosBitacora.find(
-      (item) => item._id === id
-    );
-
-  if (!registro) {
-    return;
-  }
-
-  if (
-    registro.estado &&
-    registro.estado.toLowerCase() !==
-      "pendiente"
-  ) {
-    alert(
-      "Solo puede eliminar registros pendientes."
-    );
-    return;
-  }
-
-  const confirmar = window.confirm(
-    "¿Está seguro de eliminar esta actividad?"
-  );
-
-  if (!confirmar) {
-    return;
-  }
-
-  try {
-    await solicitarAPI(
-      `${API_BITACORAS}/${id}`,
-      {
-        method: "DELETE"
-      }
-    );
-
-    await cargarRegistros();
-  } catch (error) {
-    console.error(
-      "Error al eliminar:",
-      error
-    );
-
-    alert(error.message);
-  }
-}
-
-/* =====================================================
-   LIMPIAR FORMULARIO
-===================================================== */
-
-function limpiarFormulario() {
-  formularioBitacora.reset();
-
-  registroId.value = "";
-
-  btnGuardarActividad.textContent =
-    "Guardar actividad";
-
-  establecerFechaActual();
-}
-
-btnCancelarEdicion.addEventListener(
+btnImprimirSemana.addEventListener(
   "click",
-  limpiarFormulario
+  prepararImpresionSemanal
 );
 
-/* =====================================================
-   CALCULAR HORAS
-===================================================== */
+function obtenerLunesSemana(valorSemana) {
+  const [anioTexto, numeroSemanaTexto] =
+    valorSemana.split("-W");
 
-function calcularHoras(
-  entrada,
-  salida
-) {
-  if (!entrada || !salida) {
-    return 0;
-  }
+  const anio = Number(anioTexto);
+  const numeroSemana = Number(numeroSemanaTexto);
 
-  const [
-    horaInicio,
-    minutoInicio
-  ] = entrada
-    .split(":")
-    .map(Number);
-
-  const [
-    horaFin,
-    minutoFin
-  ] = salida
-    .split(":")
-    .map(Number);
-
-  const minutosEntrada =
-    horaInicio * 60 +
-    minutoInicio;
-
-  const minutosSalida =
-    horaFin * 60 +
-    minutoFin;
-
-  const diferencia =
-    minutosSalida -
-    minutosEntrada;
-
-  if (diferencia <= 0) {
-    return 0;
-  }
-
-  return diferencia / 60;
-}
-
-function obtenerHorasRegistro(registro) {
-  const horasGuardadas =
-    Number(registro.totalHoras);
-
-  if (
-    Number.isFinite(horasGuardadas) &&
-    horasGuardadas > 0
-  ) {
-    return horasGuardadas;
-  }
-
-  return calcularHoras(
-    registro.horaEntrada,
-    registro.horaSalida
+  const cuatroEnero = new Date(
+    anio,
+    0,
+    4,
+    12,
+    0,
+    0
   );
+
+  const diaSemana =
+    cuatroEnero.getDay() || 7;
+
+  cuatroEnero.setDate(
+    cuatroEnero.getDate() -
+    diaSemana +
+    1
+  );
+
+  cuatroEnero.setDate(
+    cuatroEnero.getDate() +
+    (numeroSemana - 1) * 7
+  );
+
+  cuatroEnero.setHours(0, 0, 0, 0);
+
+  return cuatroEnero;
 }
 
-/* =====================================================
-   FORMATEAR FECHAS
-===================================================== */
-
-function formatearFecha(fechaValor) {
-  if (!fechaValor) {
-    return "";
-  }
-
-  const fechaObjeto =
-    new Date(fechaValor);
-
-  return fechaObjeto.toLocaleDateString(
+function formatearFecha(fecha) {
+  return new Date(fecha).toLocaleDateString(
     "es-CR",
     {
       day: "2-digit",
@@ -712,110 +657,79 @@ function formatearFecha(fechaValor) {
   );
 }
 
-function obtenerFechaParaInput(
-  fechaValor
+function calcularHoras(
+  horaEntrada,
+  horaSalida
 ) {
-  if (!fechaValor) {
-    return "";
+  if (!horaEntrada || !horaSalida) {
+    return 0;
   }
 
-  return new Date(fechaValor)
-    .toISOString()
-    .split("T")[0];
-}
+  const [hEntrada, mEntrada] =
+    horaEntrada.split(":").map(Number);
 
-function establecerFechaActual() {
-  if (!fecha.value) {
-    fecha.value =
-      new Date()
-        .toISOString()
-        .split("T")[0];
+  const [hSalida, mSalida] =
+    horaSalida.split(":").map(Number);
+
+  const minutosEntrada =
+    hEntrada * 60 + mEntrada;
+
+  const minutosSalida =
+    hSalida * 60 + mSalida;
+
+  const diferencia =
+    minutosSalida - minutosEntrada;
+
+  if (diferencia <= 0) {
+    return 0;
   }
+
+  return diferencia / 60;
 }
 
-/* =====================================================
-   ESCAPAR TEXTO HTML
-===================================================== */
+async function obtenerBitacorasEstudiante() {
+  const token =
+    localStorage.getItem("token");
 
-function escaparHTML(texto) {
-  return String(texto)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
+  const respuesta = await fetch(
+    "/api/bitacoras/mis-registros",
+    {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
 
-/* =====================================================
-   CALCULAR SEMANA ISO
-===================================================== */
+  const texto = await respuesta.text();
 
-function obtenerLunesSemana(
-  valorSemana
-) {
-  const [
-    anioTexto,
-    semanaTexto
-  ] = valorSemana.split("-W");
+  const datos = texto
+    ? JSON.parse(texto)
+    : {};
 
-  const anio =
-    Number(anioTexto);
-
-  const numeroSemana =
-    Number(semanaTexto);
-
-  const cuatroEnero =
-    new Date(
-      anio,
-      0,
-      4,
-      12,
-      0,
-      0
+  if (!respuesta.ok) {
+    throw new Error(
+      datos.mensaje ||
+      "No fue posible obtener la bitácora."
     );
+  }
 
-  const diaSemana =
-    cuatroEnero.getDay() || 7;
-
-  cuatroEnero.setDate(
-    cuatroEnero.getDate() -
-      diaSemana +
-      1
+  return (
+    datos.bitacoras ||
+    datos.registros ||
+    datos
   );
-
-  cuatroEnero.setDate(
-    cuatroEnero.getDate() +
-      (numeroSemana - 1) * 7
-  );
-
-  cuatroEnero.setHours(
-    0,
-    0,
-    0,
-    0
-  );
-
-  return cuatroEnero;
 }
 
-/* =====================================================
-   PREPARAR IMPRESIÓN SEMANAL
-===================================================== */
-
-btnImprimirSemana.addEventListener(
-  "click",
-  prepararImpresionSemanal
-);
-
-function prepararImpresionSemanal() {
+async function prepararImpresionSemanal() {
   try {
     const semanaSeleccionada =
       semanaImprimir.value;
 
     if (!semanaSeleccionada) {
       alert(
-        "Debe seleccionar la semana que desea imprimir."
+        "Seleccione la semana que desea imprimir."
       );
+
       return;
     }
 
@@ -838,279 +752,162 @@ function prepararImpresionSemanal() {
       999
     );
 
+    const registros =
+      await obtenerBitacorasEstudiante();
+
     const registrosSemana =
-      registrosBitacora
-        .filter((registro) => {
-          const fechaRegistro =
-            new Date(registro.fecha);
+      registros.filter((registro) => {
+        const fechaRegistro =
+          new Date(registro.fecha);
 
-          return (
-            fechaRegistro >= fechaInicio &&
-            fechaRegistro <= fechaFin
-          );
-        })
-        .sort(
-          (a, b) =>
-            new Date(a.fecha) -
-            new Date(b.fecha)
+        return (
+          fechaRegistro >= fechaInicio &&
+          fechaRegistro <= fechaFin
         );
+      });
 
-    if (
-      registrosSemana.length === 0
-    ) {
+    if (registrosSemana.length === 0) {
       alert(
-        "No existen registros para la semana seleccionada."
+        "No hay registros en la semana seleccionada."
       );
+
       return;
     }
 
-    completarDatosImpresion(
-      fechaInicio,
-      fechaFin
+    const usuario = JSON.parse(
+      localStorage.getItem("usuario") ||
+      "{}"
     );
 
-    construirTablaImpresion(
-      registrosSemana
-    );
+    document.getElementById(
+      "impEstudiante"
+    ).textContent =
+      usuario.nombreCompleto ||
+      usuario.nombre ||
+      "";
 
-    cargarEncabezadoBase64();
+    document.getElementById(
+      "impEspecialidad"
+    ).textContent =
+      usuario.especialidad?.nombre ||
+      usuario.especialidad ||
+      "Desarrollo Web";
+
+    document.getElementById(
+      "impEmpresa"
+    ).textContent =
+      usuario.empresa?.nombreEmpresa ||
+      usuario.empresa ||
+      "";
+
+    document.getElementById(
+      "impDepartamento"
+    ).textContent =
+      usuario.empresa?.departamento ||
+      usuario.departamento ||
+      "";
+
+    document.getElementById(
+      "impDireccion"
+    ).textContent =
+      usuario.empresa?.direccion ||
+      usuario.direccionEmpresa ||
+      "";
+
+    document.getElementById(
+      "impPeriodo"
+    ).textContent =
+      usuario.periodo ||
+      "2026";
+
+    document.getElementById(
+      "impSemana"
+    ).textContent =
+      `${formatearFecha(fechaInicio)} al ` +
+      `${formatearFecha(fechaFin)}`;
+
+    const cuerpoTabla =
+      document.getElementById(
+        "cuerpoTablaImpresion"
+      );
+
+    cuerpoTabla.innerHTML = "";
+
+    let totalHorasSemana = 0;
+
+    registrosSemana
+      .sort(
+        (a, b) =>
+          new Date(a.fecha) -
+          new Date(b.fecha)
+      )
+      .forEach((registro) => {
+        const horas =
+          Number(
+            registro.totalHoras
+          ) ||
+          calcularHoras(
+            registro.horaEntrada,
+            registro.horaSalida
+          );
+
+        totalHorasSemana += horas;
+
+        const fila =
+          document.createElement("tr");
+
+        fila.innerHTML = `
+          <td>
+            ${formatearFecha(registro.fecha)}
+          </td>
+
+          <td class="celda-tarea">
+            ${
+              registro.tarea ||
+              registro.actividad ||
+              ""
+            }
+          </td>
+
+          <td>
+            ${registro.horaEntrada || ""}
+          </td>
+
+          <td>
+            ${registro.horaSalida || ""}
+          </td>
+
+          <td>
+            ${horas.toFixed(2)}
+          </td>
+
+          <td class="celda-firma"></td>
+        `;
+
+        cuerpoTabla.appendChild(fila);
+      });
+
+    document.getElementById(
+      "totalHorasImpresion"
+    ).textContent =
+      totalHorasSemana.toFixed(2);
 
     document.body.classList.add(
-      "modo-impresion"
+      "imprimiendo-bitacora"
     );
 
     window.print();
 
-    setTimeout(() => {
-      document.body.classList.remove(
-        "modo-impresion"
-      );
-    }, 500);
+    document.body.classList.remove(
+      "imprimiendo-bitacora"
+    );
   } catch (error) {
     console.error(
-      "Error al preparar impresión:",
+      "Error al imprimir:",
       error
     );
 
-    alert(
-      "No fue posible preparar la impresión."
-    );
+    alert(error.message);
   }
 }
-
-/* =====================================================
-   COMPLETAR DATOS DE IMPRESIÓN
-===================================================== */
-
-function completarDatosImpresion(
-  fechaInicio,
-  fechaFin
-) {
-  const nombre =
-    datosEstudiante.nombreCompleto ||
-    usuarioGuardado.nombreCompleto ||
-    usuarioGuardado.nombre ||
-    "";
-
-  const especialidad =
-    datosEstudiante.especialidadId?.nombre ||
-    datosEstudiante.especialidad?.nombre ||
-    datosEstudiante.especialidad ||
-    "Desarrollo Web";
-
-  const empresa =
-    datosEstudiante.empresaId?.nombreEmpresa ||
-    datosEstudiante.empresa?.nombreEmpresa ||
-    datosEstudiante.empresa ||
-    "";
-
-  const departamento =
-    datosEstudiante.empresaId?.departamento ||
-    datosEstudiante.empresa?.departamento ||
-    datosEstudiante.departamento ||
-    "";
-
-  const direccion =
-    datosEstudiante.empresaId?.direccion ||
-    datosEstudiante.empresa?.direccion ||
-    datosEstudiante.direccion ||
-    "";
-
-  const periodo =
-    datosEstudiante.periodo ||
-    "2026";
-
-  document.getElementById(
-    "impEstudiante"
-  ).textContent = nombre;
-
-  document.getElementById(
-    "impEspecialidad"
-  ).textContent = especialidad;
-
-  document.getElementById(
-    "impEmpresa"
-  ).textContent = empresa;
-
-  document.getElementById(
-    "impDepartamento"
-  ).textContent = departamento;
-
-  document.getElementById(
-    "impDireccion"
-  ).textContent = direccion;
-
-  document.getElementById(
-    "impPeriodo"
-  ).textContent = periodo;
-
-  document.getElementById(
-    "impSemana"
-  ).textContent =
-    `${formatearFecha(fechaInicio)} al ` +
-    `${formatearFecha(fechaFin)}`;
-}
-
-/* =====================================================
-   CONSTRUIR TABLA DE IMPRESIÓN
-===================================================== */
-
-function construirTablaImpresion(
-  registrosSemana
-) {
-  cuerpoTablaImpresion.innerHTML = "";
-
-  let totalSemana = 0;
-
-  registrosSemana.forEach(
-    (registro) => {
-      const horas =
-        obtenerHorasRegistro(registro);
-
-      totalSemana += horas;
-
-      const fila =
-        document.createElement("tr");
-
-      fila.innerHTML = `
-        <td>
-          ${formatearFecha(registro.fecha)}
-        </td>
-
-        <td class="celda-tarea">
-          ${
-            escaparHTML(
-              registro.tarea ||
-              registro.actividad ||
-              ""
-            )
-          }
-        </td>
-
-        <td>
-          ${registro.horaEntrada || ""}
-        </td>
-
-        <td>
-          ${registro.horaSalida || ""}
-        </td>
-
-        <td>
-          ${horas.toFixed(2)}
-        </td>
-
-        <td class="celda-firma"></td>
-      `;
-
-      cuerpoTablaImpresion.appendChild(
-        fila
-      );
-    }
-  );
-
-  document.getElementById(
-    "totalHorasImpresion"
-  ).textContent =
-    totalSemana.toFixed(2);
-}
-
-/* =====================================================
-   CARGAR ENCABEZADO BASE64
-===================================================== */
-
-function cargarEncabezadoBase64() {
-  const imagen =
-    document.getElementById(
-      "imagenEncabezado"
-    );
-
-  if (
-    window.logoBase64 &&
-    typeof window.logoBase64 ===
-      "string"
-  ) {
-    imagen.src =
-      window.logoBase64;
-  } else {
-    imagen.style.display =
-      "none";
-
-    console.warn(
-      "No se encontró window.logoBase64."
-    );
-  }
-}
-
-/* =====================================================
-   CERRAR SESIÓN
-===================================================== */
-
-btnCerrarSesion.addEventListener(
-  "click",
-  cerrarSesion
-);
-
-function cerrarSesion() {
-  localStorage.removeItem("token");
-  localStorage.removeItem("usuario");
-
-  window.location.href =
-    "/login.html";
-}
-
-/* =====================================================
-   INICIALIZAR
-===================================================== */
-
-async function iniciarBitacora() {
-  if (!verificarSesion()) {
-    return;
-  }
-
-  establecerFechaActual();
-
-  await cargarDatosEstudiante();
-
-  await cargarRegistros();
-}
-
-document.addEventListener(
-  "DOMContentLoaded",
-  iniciarBitacora
-);
-
-/* =====================================================
-   FUNCIONES DISPONIBLES EN HTML
-===================================================== */
-
-window.editarRegistro =
-  editarRegistro;
-
-window.eliminarRegistro =
-  eliminarRegistro;
-
-window.limpiarFormulario =
-  limpiarFormulario;
-
-window.cerrarSesion =
-  cerrarSesion;
+cargarRegistros();
